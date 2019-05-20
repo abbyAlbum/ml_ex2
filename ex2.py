@@ -22,13 +22,12 @@ def split_to_validation(x, y, train_data_percentage=0.8):
     return train_x, train_y, validation_x, validation_y
 
 
-def load_data(train_x_location, train_y_location, test_x_location, test_y_location):
+def load_data(train_x_location, train_y_location, test_x_location):
     converter = {0: category_str_to_int}
     train_x = np.loadtxt(train_x_location, delimiter=',', converters=converter)
     train_y = np.loadtxt(train_y_location)
     test_x = np.loadtxt(test_x_location, delimiter=',', converters=converter)
-    test_y = np.loadtxt(test_y_location)
-    return train_x, train_y, test_x, test_y
+    return train_x, train_y, test_x
 
 
 def add_bias(x):
@@ -51,38 +50,26 @@ def one_hot_encode(data, index):
 
 def shuffle_data(x, y):
     # every day I'm shuffling
-    p = np.random.permutation(x.shape[0])
-    return x[p], y[p]
+    # p = np.random.permutation(x.shape[0])
+    # return x[p], y[p]
+    seed = 23
+    s = np.arange(x.shape[0])
+    np.random.seed(seed)
+    np.random.shuffle(s)
+    return x[s], y[s]
 
 
 def normalize_data(x, test_x):
-    # z-score normalization
-    # mean = np.mean(x)
-    # std = np.std(x)
-    # x = (x - mean) / std
-    # test_x = (test_x - mean) / std
-
     # min-max normalization
-    min_val = np.min(x)
-    max_val = np.max(x)
+    min_val = np.min(x, axis=0)
+    max_val = np.max(x, axis=0)
     x = (x - min_val) / (max_val - min_val)
     test_x = (test_x - min_val) / (max_val - min_val)
     return x, test_x
 
 
-def precision_calc(w, train_x, train_y):
-    errors = 0
-    for t in range(train_x.shape[0]):
-        y_hat = np.argmax(np.dot(w, train_x[t]))
-        if y_hat != train_y[t]:
-            errors += 1
-    precision = 1 - (float(errors) / train_x.shape[0])
-    print('train precision: {0}'.format(precision))
-    return precision
-
-
 def pa_train(train_x, train_y):
-    epochs = 100
+    epochs = 50
     d = train_x.shape[1]
     w = np.zeros((num_of_classes, d))
 
@@ -97,16 +84,14 @@ def pa_train(train_x, train_y):
                 tao = hinge_loss / (2 * np.linalg.norm(x))
                 w[y, :] = w[y, :] + tao * x
                 w[y_hat, :] = w[y_hat, :] - tao * x
-
-    precision_calc(w, train_x, train_y)
     return w
 
 
 def svm_train(train_x, train_y):
     regularization = 0.1
-    epochs = 100
+    epochs = 50
     d = train_x.shape[1]
-    eta = 0.001
+    eta = 0.01
     w = np.zeros((num_of_classes, d))
 
     for e in range(epochs):
@@ -126,14 +111,11 @@ def svm_train(train_x, train_y):
                     if i != y:
                         w[i, :] = (1 - eta * regularization) * w[i, :]
         eta *= 1 - e / epochs
-        # regularization *= 1 - e / epochs
-        # eta /= np.sqrt(e + 1)
-    precision_calc(w, train_x, train_y)
     return w
 
 
 def perceptron_train(train_x, train_y):
-    epochs = 100
+    epochs = 30
     d = train_x.shape[1]
     eta = 0.01
     w = np.zeros((num_of_classes, d))
@@ -149,42 +131,30 @@ def perceptron_train(train_x, train_y):
                 w[y_hat, :] = w[y_hat, :] - eta * x
 
         eta *= 1 - e / epochs
-        # eta /= np.sqrt(e + 1)
-    precision_calc(w, train_x, train_y)
     return w
 
 
-def predict(w, x, y):
-    errors = 0
+def predict_all_algos(x, w_perceptron, w_svm, w_pa):
     for t in range(x.shape[0]):
-        y_hat = np.argmax(np.dot(w, x[t]))
-        if y_hat != y[t]:
-            errors += 1
-    print('test precision: {0}'.format(1 - (float(errors) / x.shape[0])))
+        predicted_class_perceptron = np.argmax(np.dot(w_perceptron, x[t]))
+        predicted_class_svm = np.argmax(np.dot(w_svm, x[t]))
+        predicted_class_pa = np.argmax(np.dot(w_pa, x[t]))
+        print('{0}: {1}, {2}: {3}, {4}: {5}'
+              .format('perceptron', predicted_class_perceptron, 'svm', predicted_class_svm, 'pa', predicted_class_pa))
 
 
 def main():
-    train_x, train_y, test_x, test_y = load_data(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    train_x, train_y, test_x = load_data(sys.argv[1], sys.argv[2], sys.argv[3])
 
     train_x = one_hot_encode(train_x, 0)
     test_x = one_hot_encode(test_x, 0)
     train_x, test_x = normalize_data(train_x, test_x)
-    # train_x = add_bias(train_x)
-    # test_x = add_bias(test_x)
-    train_x, train_y, validation_x, validation_y = split_to_validation(train_x, train_y)
-    # test_x = normalize_data(test_x)
-    print('perceptron:')
-    w = perceptron_train(train_x, train_y)
-    predict(w, validation_x, validation_y)
-    predict(w, test_x, test_y)
-    print('svm:')
-    w = svm_train(train_x, train_y)
-    predict(w, validation_x, validation_y)
-    predict(w, test_x, test_y)
-    print('pa:')
-    w = pa_train(train_x, train_y)
-    predict(w, validation_x, validation_y)
-    predict(w, test_x, test_y)
+
+    w_perceptron = perceptron_train(train_x, train_y)
+    w_svm = svm_train(train_x, train_y)
+    w_pa = pa_train(train_x, train_y)
+
+    predict_all_algos(test_x, w_perceptron, w_svm, w_pa)
 
 
 if __name__ == "__main__":
